@@ -1,0 +1,214 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model with role-based authentication
+model User {
+  id        String  @id @default(uuid())
+  email     String  @unique
+  username  String? @unique
+  firstName String?
+  lastName  String?
+
+  // Authentication fields
+  password    String
+  isVerified  Boolean   @default(false)
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Role relationship (Many-to-Many for flexible role assignment)
+  userRoles UserRole[]
+
+  // Sessions for managing user login sessions
+  sessions Session[]
+
+  // Password reset tokens
+  passwordResets PasswordReset[]
+
+  // Email verification tokens
+  emailVerifications EmailVerification[]
+
+  // User preferences/profile
+  profile UserProfile?
+
+  @@map("users")
+}
+
+// Role model for defining different user roles
+model Role {
+  id          String  @id @default(uuid())
+  name        String  @unique // e.g., "ADMIN", "USER", "MODERATOR", "MANAGER"
+  description String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Users with this role
+  userRoles UserRole[]
+
+  // Permissions associated with this role
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String  @id @default(uuid())
+  name        String  @unique // e.g., "users:read", "posts:create", "admin:delete"
+  description String?
+  resource    String // e.g., "users", "posts", "admin"
+  action      String // e.g., "read", "create", "update", "delete"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Roles that have this permission
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+// Junction table for User-Role many-to-many relationship
+model UserRole {
+  id     String @id @default(uuid())
+  userId String
+  roleId String
+
+  // Optional: Role assignment metadata
+  assignedAt DateTime  @default(now())
+  assignedBy String? // ID of admin who assigned the role
+  expiresAt  DateTime? // Optional role expiration
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+// Junction table for Role-Permission many-to-many relationship
+model RolePermission {
+  id           String @id @default(uuid())
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// Session model for managing user sessions
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Optional session metadata
+  ipAddress String?
+  userAgent String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// Password reset token model
+model PasswordReset {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_resets")
+}
+
+// Email verification token model
+model EmailVerification {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("email_verifications")
+}
+
+// Extended user profile information
+model UserProfile {
+  id       String  @id @default(uuid())
+  userId   String  @unique
+  bio      String?
+  phone    String?
+  address  String?
+  city     String?
+  country  String?
+  timezone String?
+  language String? @default("en")
+
+  // Social links
+  website  String?
+  twitter  String?
+  linkedin String?
+  github   String?
+
+  // Preferences
+  emailNotifications Boolean @default(true)
+  smsNotifications   Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+// Enum for common roles (optional, you can also use string directly)
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  BANNED
+}
+
+// Audit log for tracking user actions (optional but recommended)
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String // e.g., "USER_LOGIN", "ROLE_ASSIGNED", "PASSWORD_CHANGED"
+  resource  String? // What was affected
+  details   Json? // Additional details in JSON format
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@map("audit_logs")
+}
