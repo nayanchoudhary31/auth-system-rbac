@@ -8,7 +8,7 @@ export const registerUserHanlder = async (
   _next: NextFunction
 ): Promise<void> => {
   try {
-    const { email, password, username, firstName, lastName } = req.body;
+    const { email, password, username, firstName, lastName, avatar } = req.body;
 
     // Basic validation
     if (!email || !password) {
@@ -31,7 +31,8 @@ export const registerUserHanlder = async (
       password,
       username,
       firstName,
-      lastName
+      lastName,
+      avatar
     );
 
     resp.status(201).json({
@@ -42,6 +43,7 @@ export const registerUserHanlder = async (
         username: user.username,
         firstName: user.firstName,
         lastName: user.lastName,
+        avatar: user.avatar
       },
     });
   } catch (error) {

@@ -20,6 +20,7 @@ model User {
   username  String? @unique
   firstName String?
   lastName  String?
+  avatar    String?
 
   // Authentication fields
   password    String

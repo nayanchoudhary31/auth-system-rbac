@@ -60,7 +60,7 @@ export const updateUserHandler = async (
 ) => {
   try {
     const userId = req.user?.id;
-    const { firstName, lastName, username } = req.body;
+    const { firstName, lastName, username, avatar } = req.body;
 
     if (!userId) {
       resp.status(401).json({
@@ -70,9 +70,9 @@ export const updateUserHandler = async (
     }
 
     // Validate input
-    if (!firstName && !lastName && !username) {
+    if (!firstName && !lastName && !username && !avatar) {
       resp.status(400).json({
-        error: "At least one field (firstName, lastName, username) is required",
+        error: "At least one field (firstName, lastName, username, avatar) is required",
       });
       return;
     }
@@ -101,6 +101,7 @@ export const updateUserHandler = async (
         ...(firstName && { firstName }),
         ...(lastName && { lastName }),
         ...(username && { username }),
+        ... (avatar && { avatar })
       },
       select: {
         id: true,

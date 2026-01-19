@@ -30,7 +30,8 @@ class AuthService {
     password: string,
     username?: string,
     firstName?: string,
-    lastName?: string
+    lastName?: string,
+    avatar?: string
   ) {
     try {
       // Check if user already exists
@@ -63,6 +64,7 @@ class AuthService {
           username: username || null,
           firstName: firstName || null,
           lastName: lastName || null,
+          avatar: avatar || null,
           password: hashedPassword,
         },
         select: {
@@ -71,6 +73,7 @@ class AuthService {
           username: true,
           firstName: true,
           lastName: true,
+          avatar: true,
           isVerified: true,
           isActive: true,
           createdAt: true,
