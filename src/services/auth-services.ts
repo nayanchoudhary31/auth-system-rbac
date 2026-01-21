@@ -1,5 +1,6 @@
 import bcrypt from "bcrypt";
 import prisma from "../config/db.js";
+import { generateToken } from "../utils/token.js";
 
 class AuthService {
   // Hash password using bcrypt
@@ -80,6 +81,12 @@ class AuthService {
           // Don't return password in response
         },
       });
+
+      try { 
+        await this.assignDefaultRole(user.id, "USER")
+      } catch (roleError) {
+        console.error(`Failed to assign default role: ${roleError}`)
+      }
 
       return user;
     } catch (error) {
@@ -206,6 +213,112 @@ class AuthService {
         },
       },
     });
+  }
+
+  async assignDefaultRole(userId: string, roleName: string = "USER") {
+    // Find the role by name
+
+    const role = await prisma.role.findUnique({
+      where: { name: roleName }
+    })
+
+    if (!role) {
+      throw new Error(`Role ${roleName} not found. Please run the seed script first`)
+    }
+
+    // Check is this user already has this role
+    const existingUserRole = await prisma.userRole.findUnique({
+      where: {
+        userId_roleId: {
+          userId,
+          roleId: role.id
+        }
+      }
+    })
+
+    // Only assign if not already assigned
+    if (!existingUserRole) {
+      await prisma.userRole.create({
+        data: {
+          userId,
+          roleId: role.id,
+          // assignedBy can be null for system-assigned roles
+        },
+      });
+    }
+
+    return role;
+  }
+
+  // Email verification creation
+  async createEmailVerification(userId: string) {
+    const token = generateToken();
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 60); // 1 hour
+
+    await prisma.emailVerification.create({
+      data: { userId, token, expiresAt },
+    });
+
+    return { token, expiresAt };
+  }
+
+  // verify the email
+  async verifyEmailToken(token: string) {
+    const record = await prisma.emailVerification.findUnique({ where: { token } });
+    if (!record) throw new Error("Invalid verification token");
+    if (record.verified) throw new Error("Token already used");
+    if (record.expiresAt < new Date()) throw new Error("Token expired");
+
+    await prisma.$transaction([
+      prisma.emailVerification.update({
+        where: { token },
+        data: { verified: true },
+      }),
+      prisma.user.update({
+        where: { id: record.userId },
+        data: { isVerified: true },
+      }),
+    ]);
+
+    return true;
+  }
+
+  // Password reset request
+  async createPasswordReset(userId: string) {
+    const token = generateToken();
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 30); // 30 min
+
+    await prisma.passwordReset.create({
+      data: { userId, token, expiresAt },
+    });
+
+    return { token, expiresAt };
+  }
+
+  // Reset password with token
+  async resetPasswordWithToken(token: string, newPassword: string) {
+    const record = await prisma.passwordReset.findUnique({ where: { token } });
+    if (!record) throw new Error("Invalid reset token");
+    if (record.used) throw new Error("Token already used");
+    if (record.expiresAt < new Date()) throw new Error("Token expired");
+
+    const hashed = await this.hashPassword(newPassword);
+
+    await prisma.$transaction([
+      prisma.passwordReset.update({
+        where: { token },
+        data: { used: true },
+      }),
+      prisma.user.update({
+        where: { id: record.userId },
+        data: { password: hashed },
+      }),
+      prisma.session.deleteMany({
+        where: { userId: record.userId }, // revoke all sessions after reset
+      }),
+    ]);
+
+    return true;
   }
 }
 
