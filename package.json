@@ -21,13 +21,15 @@
     "bcrypt": "^6.0.0",
     "dotenv": "^17.2.2",
     "express": "^4.21.2",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^7.0.12"
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
     "@types/express": "^4.17.23",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.5.1",
+    "@types/nodemailer": "^7.0.5",
     "nodemon": "^3.1.10",
     "prisma": "^6.16.2",
     "ts-node": "^10.9.2",
