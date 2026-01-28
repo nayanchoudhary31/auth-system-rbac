@@ -2,28 +2,23 @@ import type { Response, Request, NextFunction } from "express";
 import authService from "../services/auth-services.js";
 import jwtmiddleware from "../middlewares/jwt.js";
 import { sendEmail } from "../services/email-services.js";
+import { AppError } from "../utils/errors.js";
 
 export const registerUserHanlder = async (
   req: Request,
   resp: Response,
-  _next: NextFunction
+  _next: NextFunction,
 ): Promise<void> => {
   try {
     const { email, password, username, firstName, lastName, avatar } = req.body;
 
     // Basic validation
     if (!email || !password) {
-      resp.status(400).json({
-        error: "Email and password are required",
-      });
-      return;
+      throw new AppError("Email and password is required!", 400);
     }
 
     if (password.length < 6) {
-      resp.status(400).json({
-        error: "Password must be at least 6 characters long",
-      });
-      return;
+      throw new AppError("Password must be at least 6 characters long", 400);
     }
 
     // Create user using auth service
@@ -33,7 +28,7 @@ export const registerUserHanlder = async (
       username,
       firstName,
       lastName,
-      avatar
+      avatar,
     );
 
     resp.status(201).json({
@@ -44,61 +39,46 @@ export const registerUserHanlder = async (
         username: user.username,
         firstName: user.firstName,
         lastName: user.lastName,
-        avatar: user.avatar
+        avatar: user.avatar,
       },
     });
   } catch (error) {
-    console.error("Registration error:", error);
-    resp.status(400).json({
-      error: error instanceof Error ? error.message : "Registration failed",
-    });
+    _next(error);
   }
 };
 
 export const loginUserHandler = async (
   req: Request,
   resp: Response,
-  _next: NextFunction
+  _next: NextFunction,
 ) => {
   try {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      resp.status(400).json({
-        error: "Email and password are required",
-      });
-      return;
+      throw new AppError("Email and password is required", 400);
     }
 
     // Find user by email
     const user = await authService.findUserByEmail(email);
 
     if (!user) {
-      resp.status(401).json({
-        error: "Invalid email or password",
-      });
-      return;
+      throw new AppError(`User not found by ${email}`, 401);
     }
 
     // Verify password
     const isPasswordValid = await authService.verifyPassword(
       password,
-      user.password
+      user.password,
     );
 
     if (!isPasswordValid) {
-      resp.status(401).json({
-        error: "Invalid email or password",
-      });
-      return;
+      throw new AppError("Invalid password or email", 401);
     }
 
     // Check if user is active
     if (!user.isActive) {
-      resp.status(401).json({
-        error: "Account is deactivated",
-      });
-      return;
+      throw new AppError("Account is deactivated", 401);
     }
 
     const userRoles = user.userRoles.map((ur) => ur.role.name) || [];
@@ -125,7 +105,7 @@ export const loginUserHandler = async (
       refreshToken,
       refreshTokenExpiry,
       ipAddress,
-      userAgent
+      userAgent,
     );
 
     // Update lastLoginAt timestamp
@@ -147,20 +127,16 @@ export const loginUserHandler = async (
       },
     });
   } catch (error) {
-    console.error("Login error:", error);
-    resp.status(500).json({
-      error: "Login failed",
-    });
+    _next(error);
   }
 };
 
 export const refreshTokenHanlder = async (
   req: Request,
   resp: Response,
-  _next: NextFunction
+  _next: NextFunction,
 ) => {
   try {
-    // Extract refresh token from request body or Authorization header
     const oldRefreshToken =
       req.body.refreshToken ||
       (req.headers.authorization?.startsWith("Bearer ")
@@ -168,105 +144,66 @@ export const refreshTokenHanlder = async (
         : null);
 
     if (!oldRefreshToken) {
-      resp.status(400).json({
-        error: "Refresh token is required",
-      });
-      return;
+      throw new AppError("Refresh token is required", 400);
     }
 
-    // Verify the refresh token
-    const decoded = jwtmiddleware.verifyRefreshToken(oldRefreshToken);
+    // Verify the refresh token (will throw on invalid/expired)
+    jwtmiddleware.verifyRefreshToken(oldRefreshToken);
 
-    // Find the session in database to ensure it exists and is valid
     const session = await authService.findSessionByToken(oldRefreshToken);
-
     if (!session) {
-      resp.status(401).json({
-        error: "Invalid refresh token",
-      });
-      return;
+      throw new AppError("Invalid refresh token", 401);
     }
 
-    // Check if session has expired
     if (session.expiresAt < new Date()) {
-      // Clean up expired session
       await authService.deleteSession(oldRefreshToken);
-      resp.status(401).json({
-        error: "Refresh token has expired",
-      });
-      return;
+      throw new AppError("Refresh token has expired", 401);
     }
 
-    // Check if user is still active
     if (!session.user.isActive) {
-      resp.status(401).json({
-        error: "User account is deactivated",
-      });
-      return;
+      throw new AppError("User account is deactivated", 401);
     }
 
-    // Get user roles for new token
     const userRoles = session.user.userRoles.map((ur) => ur.role.name) || [];
 
-    // Generate new token pair
     const { accessToken, refreshToken } = jwtmiddleware.generateTokenPair({
       id: session.user.id,
       email: session.user.email,
       roles: userRoles,
     });
 
-    // Extract client information for session tracking
     const ipAddress =
       req.ip || req.connection.remoteAddress || req.socket.remoteAddress;
     const userAgent = req.get("User-Agent");
 
-    // Calculate new refresh token expiration (7 days from now)
     const refreshTokenExpiry = new Date();
     refreshTokenExpiry.setDate(refreshTokenExpiry.getDate() + 7);
 
-    // Delete the old session
     await authService.deleteSession(oldRefreshToken);
-
-    // Create new session with the new refresh token
     await authService.createSession(
       session.user.id,
       refreshToken,
       refreshTokenExpiry,
       ipAddress,
-      userAgent
+      userAgent,
     );
 
     resp.status(200).json({
       message: "Tokens refreshed successfully",
       tokens: {
         accessToken,
-        refreshToken: refreshToken,
+        refreshToken,
       },
     });
   } catch (error) {
-    console.error("Token refresh error:", error);
-
-    // Handle specific JWT errors
-    if (
-      error instanceof Error &&
-      error.message.includes("Invalid or expired refresh token")
-    ) {
-      resp.status(401).json({
-        error: "Invalid or expired refresh token",
-      });
-      return;
-    }
-
-    resp.status(500).json({
-      error: "Token refresh failed",
-    });
+    _next(error);
   }
 };
 
 export const logoutUserHandler = async (
   req: Request,
   resp: Response,
-  _next: NextFunction
+  _next: NextFunction,
 ) => {
   try {
     // Extract refresh token from request body or Authorization header
@@ -285,24 +222,25 @@ export const logoutUserHandler = async (
       message: "Logout successful",
     });
   } catch (error) {
-    console.error("Logout error:", error);
-    resp.status(500).json({
-      error: "Logout failed",
-    });
+    _next(error);
   }
 };
 
-
-export const requestEmailVerificationHandler = async (req: Request, resp: Response) => {
+export const requestEmailVerificationHandler = async (
+  req: Request,
+  resp: Response,
+  _next: NextFunction,
+) => {
   try {
     const { email } = req.body;
 
-    if (!email) return resp.status(400).json({ error: "Email is required!" })
-
+    if (!email) throw new AppError("Email is required!", 400);
     const user = await authService.findUserByEmail(email);
     if (!user) {
       // don’t reveal existence
-      return resp.status(200).json({ message: "If the account exists, an email was sent." });
+      return resp
+        .status(200)
+        .json({ message: "If the account exists, an email was sent." });
     }
 
     const { token } = await authService.createEmailVerification(user.id);
@@ -318,38 +256,47 @@ export const requestEmailVerificationHandler = async (req: Request, resp: Respon
 
     return resp.status(200).json({ message: "Verification email sent." });
   } catch (error) {
-    return resp.status(500).json({ error: "Failed to send verification email" });
-  }
-}
-
-export const confirmEmailVerificationHandler = async (req: Request, resp: Response) => {
-  try {
-    const token = String(req.query.token || "");
-    if (!token) return resp.status(400).json({ error: "Token is required" });
-
-    await authService.verifyEmailToken(token);
-    return resp.status(200).json({ message: "Email verified successfully" });
-  } catch (e) {
-    return resp.status(400).json({ error: e instanceof Error ? e.message : "Verification failed" });
+    _next(error);
   }
 };
 
+export const confirmEmailVerificationHandler = async (
+  req: Request,
+  resp: Response,
+  _next: NextFunction,
+) => {
+  try {
+    const token = String(req.query.token || "");
+    if (!token) throw new AppError("Token is required!", 400);
 
-export const forgotPasswordHandler = async (req: Request, resp: Response) => {
+    await authService.verifyEmailToken(token);
+    return resp.status(200).json({ message: "Email verified successfully" });
+  } catch (error) {
+    _next(error);
+  }
+};
+
+export const forgotPasswordHandler = async (
+  req: Request,
+  resp: Response,
+  _next: NextFunction,
+) => {
   try {
     const { email } = req.body;
-    if (!email) return resp.status(400).json({ error: "Email is required" });
+    if (!email) throw new AppError("Email is required", 400);
 
     const user = await authService.findUserByEmail(email);
 
     // Always return 200 to avoid user enumeration
     if (!user) {
-      return resp.status(200).json({ message: "If the account exists, an email was sent." });
+      return resp
+        .status(200)
+        .json({ message: "If the account exists, an email was sent." });
     }
 
     const { token } = await authService.createPasswordReset(user.id);
 
-    const appUrl = process.env.APP_URL || "http://localhost:3001";
+    const appUrl = process.env.APP_URL || "http://localhost:3002";
     // Usually this link should point to your frontend page:
     // e.g. `${FRONTEND_URL}/reset-password?token=...`
     const link = `${appUrl}/api/v1/auth/password/reset?token=${token}`;
@@ -360,13 +307,18 @@ export const forgotPasswordHandler = async (req: Request, resp: Response) => {
       html: `<p>Reset your password using this link:</p><p><a href="${link}">${link}</a></p>`,
     });
 
-    return resp.status(200).json({ message: "If the account exists, an email was sent." });
-  } catch (e) {
-    return resp.status(500).json({ error: "Failed to process request" });
+    return resp
+      .status(200)
+      .json({ message: "If the account exists, an email was sent." });
+  } catch (error) {
+    _next(error);
   }
 };
 
-export const resetPasswordFormHandler = async (req: Request, resp: Response) => {
+export const resetPasswordFormHandler = async (
+  req: Request,
+  resp: Response,
+) => {
   const token = String(req.query.token || "");
   if (!token) return resp.status(400).send("Token is required");
 
@@ -375,33 +327,55 @@ export const resetPasswordFormHandler = async (req: Request, resp: Response) => 
   return resp.status(200).send(`
     <!doctype html>
     <html>
-      <head><meta charset="utf-8"><title>Reset password</title></head>
-      <body>
-        <h2>Reset password</h2>
+      <head><meta charset="utf-8"><title>Reset password</title>
+              <style>
+          body { font-family: Arial, sans-serif; max-width: 500px; margin: 50px auto; padding: 20px; }
+          form { margin-top: 20px; }
+          label { display: block; margin-bottom: 5px; font-weight: bold; }
+          input[type="password"] { width: 100%; padding: 8px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 4px; }
+          button { background-color: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+          button:hover { background-color: #0056b3; }
+          .error { color: red; margin-top: 10px; }
+        </style>
+
+      </head>
+     <body>
+        <h2>Reset your password</h2>
         <form method="POST" action="/api/v1/auth/password/reset">
           <input type="hidden" name="token" value="${token}" />
-          <label>New password</label><br/>
-          <input type="password" name="newPassword" minlength="6" required />
-          <button type="submit">Reset</button>
+          <label for="newPassword">New password (minimum 6 characters):</label>
+          <input
+            id="newPassword"
+            type="password"
+            name="newPassword"
+            minlength="6"
+            required
+            autocomplete="new-password"
+          />
+          <button type="submit">Reset password</button>
         </form>
       </body>
     </html>
   `);
 };
 
-export const resetPasswordHandler = async (req: Request, resp: Response) => {
+export const resetPasswordHandler = async (
+  req: Request,
+  resp: Response,
+  _next: NextFunction,
+) => {
   try {
     const { token, newPassword } = req.body;
     if (!token || !newPassword) {
-      return resp.status(400).json({ error: "Token and newPassword are required" });
+      throw new AppError("Token and new password are required", 400);
     }
     if (newPassword.length < 6) {
-      return resp.status(400).json({ error: "Password must be at least 6 characters long" });
+      throw new AppError("Password must be atleast 6 character long", 400);
     }
 
     await authService.resetPasswordWithToken(token, newPassword);
     return resp.status(200).json({ message: "Password reset successfully" });
-  } catch (e) {
-    return resp.status(400).json({ error: e instanceof Error ? e.message : "Reset failed" });
+  } catch (error) {
+    _next(error);
   }
 };
