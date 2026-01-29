@@ -7,7 +7,7 @@ import { AppError } from "../utils/errors.js";
 export const registerUserHanlder = async (
   req: Request,
   resp: Response,
-  _next: NextFunction,
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const { email, password, username, firstName, lastName, avatar } = req.body;
@@ -43,14 +43,14 @@ export const registerUserHanlder = async (
       },
     });
   } catch (error) {
-    _next(error);
+    next(error);
   }
 };
 
 export const loginUserHandler = async (
   req: Request,
   resp: Response,
-  _next: NextFunction,
+  next: NextFunction,
 ) => {
   try {
     const { email, password } = req.body;
@@ -63,7 +63,7 @@ export const loginUserHandler = async (
     const user = await authService.findUserByEmail(email);
 
     if (!user) {
-      throw new AppError(`User not found by ${email}`, 401);
+      throw new AppError(`Invalid email or password`, 401);
     }
 
     // Verify password
@@ -127,14 +127,14 @@ export const loginUserHandler = async (
       },
     });
   } catch (error) {
-    _next(error);
+    next(error);
   }
 };
 
 export const refreshTokenHanlder = async (
   req: Request,
   resp: Response,
-  _next: NextFunction,
+  next: NextFunction,
 ) => {
   try {
     const oldRefreshToken =
@@ -196,14 +196,14 @@ export const refreshTokenHanlder = async (
       },
     });
   } catch (error) {
-    _next(error);
+    next(error);
   }
 };
 
 export const logoutUserHandler = async (
   req: Request,
   resp: Response,
-  _next: NextFunction,
+  next: NextFunction,
 ) => {
   try {
     // Extract refresh token from request body or Authorization header
@@ -222,14 +222,14 @@ export const logoutUserHandler = async (
       message: "Logout successful",
     });
   } catch (error) {
-    _next(error);
+    next(error);
   }
 };
 
 export const requestEmailVerificationHandler = async (
   req: Request,
   resp: Response,
-  _next: NextFunction,
+  next: NextFunction,
 ) => {
   try {
     const { email } = req.body;
@@ -256,14 +256,14 @@ export const requestEmailVerificationHandler = async (
 
     return resp.status(200).json({ message: "Verification email sent." });
   } catch (error) {
-    _next(error);
+    next(error);
   }
 };
 
 export const confirmEmailVerificationHandler = async (
   req: Request,
   resp: Response,
-  _next: NextFunction,
+  next: NextFunction,
 ) => {
   try {
     const token = String(req.query.token || "");
@@ -272,14 +272,14 @@ export const confirmEmailVerificationHandler = async (
     await authService.verifyEmailToken(token);
     return resp.status(200).json({ message: "Email verified successfully" });
   } catch (error) {
-    _next(error);
+    next(error);
   }
 };
 
 export const forgotPasswordHandler = async (
   req: Request,
   resp: Response,
-  _next: NextFunction,
+  next: NextFunction,
 ) => {
   try {
     const { email } = req.body;
@@ -311,7 +311,7 @@ export const forgotPasswordHandler = async (
       .status(200)
       .json({ message: "If the account exists, an email was sent." });
   } catch (error) {
-    _next(error);
+    next(error);
   }
 };
 
@@ -362,7 +362,7 @@ export const resetPasswordFormHandler = async (
 export const resetPasswordHandler = async (
   req: Request,
   resp: Response,
-  _next: NextFunction,
+  next: NextFunction,
 ) => {
   try {
     const { token, newPassword } = req.body;
@@ -370,12 +370,12 @@ export const resetPasswordHandler = async (
       throw new AppError("Token and new password are required", 400);
     }
     if (newPassword.length < 6) {
-      throw new AppError("Password must be atleast 6 character long", 400);
+      throw new AppError("Password must be at least 6 character long", 400);
     }
 
     await authService.resetPasswordWithToken(token, newPassword);
     return resp.status(200).json({ message: "Password reset successfully" });
   } catch (error) {
-    _next(error);
+    next(error);
   }
 };
