@@ -1,6 +1,7 @@
 import jwt, { type Secret, type SignOptions } from "jsonwebtoken";
 import type { Request, Response, NextFunction } from "express";
 import authService from "../services/auth-services.js";
+import { AppError } from "../utils/errors.js";
 
 /**
  * JWT Middleware Class
@@ -19,10 +20,13 @@ class JWTMiddleware {
   private readonly refreshTokenExpiry: NonNullable<SignOptions["expiresIn"]>;
 
   constructor() {
-    this.accessTokenSecret = (process.env.JWT_ACCESS_SECRET ||
-      "your-access-secret-key") as Secret;
-    this.refreshTokenSecret = (process.env.JWT_REFRESH_SECRET ||
-      "your-refresh-secret-key") as Secret;
+    const accessSecret = process.env.JWT_ACCESS_SECRET;
+    const refreshSecret = process.env.JWT_REFRESH_SECRET;
+    if (!accessSecret || !refreshSecret) {
+      throw new Error("JWT secrets are not configured");
+    }
+    this.accessTokenSecret = accessSecret as Secret;
+    this.refreshTokenSecret = refreshSecret as Secret;
     this.accessTokenExpiry = (process.env.JWT_ACCESS_EXPIRY ||
       "15M") as NonNullable<SignOptions["expiresIn"]>;
     this.refreshTokenExpiry = (process.env.JWT_REFRESH_EXPIRY ||
@@ -86,7 +90,7 @@ class JWTMiddleware {
         audience: "auth-system-users",
       });
     } catch (error) {
-      throw new Error("Invalid or expired access token");
+      throw new AppError("Invalid or expired access token", 401);
     }
   }
 
@@ -103,7 +107,7 @@ class JWTMiddleware {
         audience: "auth-system-users",
       });
     } catch (error) {
-      throw new Error("Invalid or expired refresh token");
+      throw new AppError("Invalid or expired refresh token", 401);
     }
   }
 
