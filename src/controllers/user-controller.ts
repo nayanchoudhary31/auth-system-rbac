@@ -72,7 +72,8 @@ export const updateUserHandler = async (
     // Validate input
     if (!firstName && !lastName && !username && !avatar) {
       resp.status(400).json({
-        error: "At least one field (firstName, lastName, username, avatar) is required",
+        error:
+          "At least one field (firstName, lastName, username, avatar) is required",
       });
       return;
     }
@@ -101,7 +102,7 @@ export const updateUserHandler = async (
         ...(firstName && { firstName }),
         ...(lastName && { lastName }),
         ...(username && { username }),
-        ... (avatar && { avatar })
+        ...(avatar && { avatar }),
       },
       select: {
         id: true,
@@ -275,11 +276,8 @@ export const changePasswordHandler = async (
       data: { password: hashedNewPassword },
     });
 
-    // Revoke all sessions except current one (force re-login)
-    const currentSessionToken = req.headers.authorization?.substring(7);
-    if (currentSessionToken) {
-      await authService.deleteAllUserSessions(userId);
-    }
+    // Revoke all sessions (force re-login)
+    await authService.deleteAllUserSessions(userId);
 
     resp.status(200).json({
       message: "Password changed successfully. Please log in again.",
@@ -321,10 +319,16 @@ export const getUserSessionsHandler = async (
     });
 
     // Don't expose the full token, just show last 8 characters
+    const refreshToken =
+      (req.headers["x-refresh-token"] as string | undefined) || undefined;
+    const refreshTokenHash = refreshToken
+      ? authService.hashToken(refreshToken)
+      : undefined;
+
     const sanitizedSessions = sessions.map((session) => ({
       ...session,
       token: `...${session.token.slice(-8)}`,
-      isCurrent: session.token === req.headers.authorization?.substring(7),
+      isCurrent: refreshTokenHash ? session.token === refreshTokenHash : false,
     }));
 
     resp.status(200).json({
