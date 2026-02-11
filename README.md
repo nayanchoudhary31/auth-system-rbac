@@ -132,7 +132,7 @@ auth-system/
 |--------|----------|-------------|---------------|
 | POST | `/signup` | Register a new user | No |
 | POST | `/login` | User login | No |
-| GET | `/refresh` | Refresh access token | No (refresh token) |
+| POST | `/refresh` | Refresh access token | No (refresh token) |
 | POST | `/logout` | User logout | No (refresh token) |
 
 ### User Routes (`/api/v1/user`)
@@ -205,3 +205,24 @@ Request → Verify Refresh Token → Check Session → Generate New Tokens → U
 
 ### 5. Logout Flow
 Request → Extract Refresh Token → Delete Session → Return Success
+
+## 🔧 Environment Variables
+
+Create a `.env` file using `.env.example` as a template.
+
+Required:
+- `DATABASE_URL` - PostgreSQL connection string
+- `JWT_ACCESS_SECRET` - Secret for access tokens
+- `JWT_REFRESH_SECRET` - Secret for refresh tokens
+
+Optional (with defaults):
+- `PORT` (default: 3002)
+- `NODE_ENV` (default: development)
+- `APP_URL` (default: http://localhost:3002)
+- `JWT_ACCESS_EXPIRY` (default: 15m)
+- `JWT_REFRESH_EXPIRY` (default: 7d)
+
+Email:
+- `EMAIL_PROVIDER` - `ethereal` for dev/testing, `smtp` for production
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` - required if `EMAIL_PROVIDER=smtp`
+
