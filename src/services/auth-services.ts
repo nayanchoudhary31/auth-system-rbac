@@ -1,8 +1,15 @@
 import bcrypt from "bcrypt";
+import crypto from "crypto";
 import prisma from "../config/db.js";
 import { generateToken } from "../utils/token.js";
+import { AppError } from "../utils/errors.js";
 
 class AuthService {
+  // Hash token before storing or comparing
+  hashToken(token: string): string {
+    return crypto.createHash("sha256").update(token).digest("hex");
+  }
+
   // Hash password using bcrypt
   async hashPassword(password: string): Promise<string> {
     const saltRounds = 12; // Higher salt rounds for better security
@@ -41,7 +48,7 @@ class AuthService {
       });
 
       if (existingUser) {
-        throw new Error("User with this email already exists");
+        throw new AppError("User with this email already exists", 409);
       }
 
       // Check if username is taken (if provided)
@@ -51,7 +58,7 @@ class AuthService {
         });
 
         if (existingUsername) {
-          throw new Error("Username is already taken");
+          throw new AppError("Username is already taken", 409);
         }
       }
 
@@ -82,10 +89,10 @@ class AuthService {
         },
       });
 
-      try { 
-        await this.assignDefaultRole(user.id, "USER")
+      try {
+        await this.assignDefaultRole(user.id, "USER");
       } catch (roleError) {
-        console.error(`Failed to assign default role: ${roleError}`)
+        console.error(`Failed to assign default role: ${roleError}`);
       }
 
       return user;
@@ -102,10 +109,11 @@ class AuthService {
     ipAddress?: string,
     userAgent?: string
   ) {
+    const tokenHash = this.hashToken(token);
     return await prisma.session.create({
       data: {
         userId,
-        token,
+        token: tokenHash,
         expiresAt,
         ipAddress: ipAddress || null,
         userAgent: userAgent || null,
@@ -171,8 +179,9 @@ class AuthService {
 
   // Find session by token
   async findSessionByToken(token: string) {
+    const tokenHash = this.hashToken(token);
     return await prisma.session.findUnique({
-      where: { token },
+      where: { token: tokenHash },
       include: {
         user: {
           select: {
@@ -192,8 +201,9 @@ class AuthService {
 
   // Delete session for logout
   async deleteSession(token: string): Promise<void> {
-    await prisma.session.delete({
-      where: { token },
+    const tokenHash = this.hashToken(token);
+    await prisma.session.deleteMany({
+      where: { token: tokenHash },
     });
   }
 
@@ -219,11 +229,13 @@ class AuthService {
     // Find the role by name
 
     const role = await prisma.role.findUnique({
-      where: { name: roleName }
-    })
+      where: { name: roleName },
+    });
 
     if (!role) {
-      throw new Error(`Role ${roleName} not found. Please run the seed script first`)
+      throw new Error(
+        `Role ${roleName} not found. Please run the seed script first`
+      );
     }
 
     // Check is this user already has this role
@@ -231,10 +243,10 @@ class AuthService {
       where: {
         userId_roleId: {
           userId,
-          roleId: role.id
-        }
-      }
-    })
+          roleId: role.id,
+        },
+      },
+    });
 
     // Only assign if not already assigned
     if (!existingUserRole) {
@@ -264,10 +276,12 @@ class AuthService {
 
   // verify the email
   async verifyEmailToken(token: string) {
-    const record = await prisma.emailVerification.findUnique({ where: { token } });
-    if (!record) throw new Error("Invalid verification token");
-    if (record.verified) throw new Error("Token already used");
-    if (record.expiresAt < new Date()) throw new Error("Token expired");
+    const record = await prisma.emailVerification.findUnique({
+      where: { token },
+    });
+    if (!record) throw new AppError("Invalid verification token", 400);
+    if (record.verified) throw new AppError("Token already used", 400);
+    if (record.expiresAt < new Date()) throw new AppError("Token expired", 400);
 
     await prisma.$transaction([
       prisma.emailVerification.update({
@@ -298,9 +312,9 @@ class AuthService {
   // Reset password with token
   async resetPasswordWithToken(token: string, newPassword: string) {
     const record = await prisma.passwordReset.findUnique({ where: { token } });
-    if (!record) throw new Error("Invalid reset token");
-    if (record.used) throw new Error("Token already used");
-    if (record.expiresAt < new Date()) throw new Error("Token expired");
+    if (!record) throw new AppError("Invalid reset token", 400);
+    if (record.used) throw new AppError("Token already used", 400);
+    if (record.expiresAt < new Date()) throw new AppError("Token expired", 400);
 
     const hashed = await this.hashPassword(newPassword);
 

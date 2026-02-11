@@ -18,7 +18,7 @@ router.post("/signup", registerUserHanlder);
 // Login
 router.post("/login", loginUserHandler);
 // Refresh tokens
-router.get("/refresh", refreshTokenHanlder);
+router.post("/refresh", refreshTokenHanlder);
 // Logout
 router.post("/logout", logoutUserHandler);
 
