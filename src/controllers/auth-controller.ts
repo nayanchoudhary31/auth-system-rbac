@@ -31,8 +31,31 @@ export const registerUserHanlder = async (
       avatar,
     );
 
+    // Automatically send email verification after registration
+    try {
+      const { token } = await authService.createEmailVerification(user.id);
+      const appUrl = process.env.APP_URL || "http://localhost:3002";
+      const link = `${appUrl}/api/v1/auth/verify-email/confirm?token=${token}`;
+
+      await sendEmail({
+        to: user.email,
+        subject: "Verify your email address",
+        html: `
+            <h2>Welcome! Please verify your email</h2>
+            <p>Thank you for registering. Please click the link below to verify your email address:</p>
+            <p><a href="${link}">${link}</a></p>
+            <p>This link will expire in 1 hour.</p>
+            <p>If you didn't create an account, please ignore this email.</p>
+          `,
+      });
+    } catch (emailError) {
+      // Log error but don't fail registration if email sending fails
+      console.error("Failed to send verification email:", emailError);
+    }
+
     resp.status(201).json({
-      message: "User registered successfully!",
+      message:
+        "User registered successfully! Please check your email to verify your account.",
       user: {
         id: user.id,
         email: user.email,
@@ -79,6 +102,14 @@ export const loginUserHandler = async (
     // Check if user is active
     if (!user.isActive) {
       throw new AppError("Account is deactivated", 401);
+    }
+
+    // Check if email is verified
+    if (!user.isVerified) {
+      throw new AppError(
+        "Please verify your email address before logging in. Check your inbox for the verification link.",
+        403,
+      );
     }
 
     const userRoles = user.userRoles.map((ur) => ur.role.name) || [];
@@ -241,6 +272,13 @@ export const requestEmailVerificationHandler = async (
       return resp
         .status(200)
         .json({ message: "If the account exists, an email was sent." });
+    }
+
+    // Check if email is already verified
+    if (user.isVerified) {
+      return resp.status(200).json({
+        message: "Email is already verified. You can proceed to login.",
+      });
     }
 
     const { token } = await authService.createEmailVerification(user.id);
