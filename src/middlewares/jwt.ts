@@ -28,9 +28,9 @@ class JWTMiddleware {
     this.accessTokenSecret = accessSecret as Secret;
     this.refreshTokenSecret = refreshSecret as Secret;
     this.accessTokenExpiry = (process.env.JWT_ACCESS_EXPIRY ||
-      "15M") as NonNullable<SignOptions["expiresIn"]>;
+      "15m") as NonNullable<SignOptions["expiresIn"]>;
     this.refreshTokenExpiry = (process.env.JWT_REFRESH_EXPIRY ||
-      "7D") as NonNullable<SignOptions["expiresIn"]>;
+      "7d") as NonNullable<SignOptions["expiresIn"]>;
   }
 
   /**
