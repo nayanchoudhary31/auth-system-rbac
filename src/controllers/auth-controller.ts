@@ -142,6 +142,9 @@ export const loginUserHandler = async (
     // Update lastLoginAt timestamp
     await authService.updateLastLogin(user.id);
 
+    // Refresh token set in cookie
+    resp.cookie("refreshToken", refreshToken,jwtmiddleware.getRefreshTokenCookieOptions());
+
     resp.status(200).json({
       message: "Login successful",
       user: {
@@ -154,7 +157,6 @@ export const loginUserHandler = async (
       },
       tokens: {
         accessToken,
-        refreshToken,
       },
     });
   } catch (error) {
@@ -168,11 +170,7 @@ export const refreshTokenHanlder = async (
   next: NextFunction,
 ) => {
   try {
-    const oldRefreshToken =
-      req.body.refreshToken ||
-      (req.headers.authorization?.startsWith("Bearer ")
-        ? req.headers.authorization.substring(7)
-        : null);
+    const oldRefreshToken = req.cookies?.["refreshToken"];
 
     if (!oldRefreshToken) {
       throw new AppError("Refresh token is required", 400);
@@ -219,6 +217,12 @@ export const refreshTokenHanlder = async (
       userAgent,
     );
 
+    resp.cookie(
+      "refreshToken",
+      refreshToken,
+      jwtmiddleware.getRefreshTokenCookieOptions(),
+    );
+
     resp.status(200).json({
       message: "Tokens refreshed successfully",
       tokens: {
@@ -238,16 +242,17 @@ export const logoutUserHandler = async (
 ) => {
   try {
     // Extract refresh token from request body or Authorization header
-    const refreshToken =
-      req.body.refreshToken ||
-      (req.headers.authorization?.startsWith("Bearer ")
-        ? req.headers.authorization.substring(7)
-        : null);
+    const refreshToken = req.cookies?.["refreshToken"];
 
     if (refreshToken) {
       // Delete the specific session
       await authService.deleteSession(refreshToken);
     }
+
+    resp.clearCookie(
+      "refreshToken",
+      jwtmiddleware.getRefreshTokenCookieOptions(),
+    );
 
     resp.status(200).json({
       message: "Logout successful",
