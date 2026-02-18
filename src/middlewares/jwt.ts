@@ -1,5 +1,5 @@
 import jwt, { type Secret, type SignOptions } from "jsonwebtoken";
-import type { Request, Response, NextFunction } from "express";
+import type { Request, Response, NextFunction, CookieOptions } from "express";
 import authService from "../services/auth-services.js";
 import { AppError } from "../utils/errors.js";
 
@@ -19,6 +19,8 @@ class JWTMiddleware {
   private readonly accessTokenExpiry: NonNullable<SignOptions["expiresIn"]>;
   private readonly refreshTokenExpiry: NonNullable<SignOptions["expiresIn"]>;
 
+  private readonly cookieOptions: CookieOptions;
+
   constructor() {
     const accessSecret = process.env.JWT_ACCESS_SECRET;
     const refreshSecret = process.env.JWT_REFRESH_SECRET;
@@ -31,6 +33,13 @@ class JWTMiddleware {
       "15m") as NonNullable<SignOptions["expiresIn"]>;
     this.refreshTokenExpiry = (process.env.JWT_REFRESH_EXPIRY ||
       "7d") as NonNullable<SignOptions["expiresIn"]>;
+
+    this.cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/api/v1/auth",
+    };
   }
 
   /**
@@ -125,7 +134,7 @@ class JWTMiddleware {
   authenticate = async (
     req: Request,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ): Promise<void> => {
     try {
       // Step 1: Extract token from Authorization header
@@ -195,7 +204,7 @@ class JWTMiddleware {
 
       // Check if user has any of the required roles
       const hasRequiredRole = requiredRoles.some((role) =>
-        req.user!.roles.includes(role)
+        req.user!.roles.includes(role),
       );
 
       if (!hasRequiredRole) {
@@ -222,7 +231,7 @@ class JWTMiddleware {
   optionalAuth = async (
     req: Request,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ): Promise<void> => {
     try {
       const authHeader = req.headers.authorization;
@@ -283,6 +292,10 @@ class JWTMiddleware {
     });
 
     return { accessToken, refreshToken };
+  }
+
+  getRefreshTokenCookieOptions(): CookieOptions {
+    return this.cookieOptions;
   }
 }
 
